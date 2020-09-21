@@ -1,206 +1,12 @@
-
 import numpy as np
 from numpy.linalg import norm
 from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit
-
-
-# Tasks to do
-
-def dPdt(t, P, params_unknown, params_known, i=None):
-    """Define differential equation for reservoir pressure
-
-    Parameters:
-    -----------
-        t : float
-            Time value to be used
-        P : float
-            Corresponding pressure value
-        params_unknown : array-like
-            Values of parameters that will later be fit to curve
-            Expands to (a,b,c)
-        params_known : array-like
-            Other parameters that do not need fitting
-            Expands to (q,P0,dqdt)
-        i : int, optional
-            Gives the index to be used if q and dqdt are arrays
-    
-    Returns:
-    --------
-        dPdt : float
-    """
-    q,dqdt = params_known
-    a,b,c,P0 = params_unknown
-    if i is not None:
-        return -a*q[i] - b*(P-P0) - c*dqdt[i]
-    else:
-        return -a*q - b*(P-P0) - c*dqdt
-
-def dCdt(t,C,params_unknown, params_known,i):
-    """Differential equation for CO2 concentration within reservoir
-        Parameters:
-    -----------
-        t : floar
-            Time value to be used
-        C : float
-            Corresponding concentration value
-        params_unknown : array-like
-            Values of parameters that will later be fit to curve
-            Expands to (d,M0)
-        params_known : array-like
-            Other parameters that do not need fitting
-            Expands to (q_co2,P0,C0,a,b,c,P)
-        i : int
-            Gives the index to be used if parameters are array-like
-    
-    Returns:
-    --------
-        dCdt : float
-    """
-    q_co2_interp,P0,C0,a,b,c,P = params_known
-    d,M0 = params_unknown
-    return (1-C)*q_co2_interp[i]/M0 -b/a/M0*(P[i]-P0)*(carbon_prime(C,P[i],P0)-C)-d*(C-C0)
-
-def improved_euler(f,t0, t1, dt, x0, pars):
-    """Solve an ODE numerically.
-
-        Parameters:
-        -----------
-        f : callable
-            Function that returns dxdt given variable and parameter inputs.
-        t0 : float
-            Initial time value
-        t1 : float
-            Final time value
-        dt : float
-            Time step used
-        x0 : float
-            Initial value of solution.
-        pars : array-like
-            List of parameters passed to ODE function f.
-
-        Returns:
-        --------
-        x : array-like
-            Dependent variable solution vector.
-
-        Notes:
-        ------
-        Assume that ODE function f takes the following inputs, in order:
-            1. independent variable
-            2. dependent variable
-            3. Parameters that will later be passed to the curve fitting function
-            4. all other parameters
-            Refer to the function definitions for order within (3) and (4)
-            5. Optional - counter number to be passed to array parameters
-    """
-    # Allocate return arrays
-    t = np.arange(t0, t1+dt, dt)
-    params_unknown, params_known = pars
-    x = np.zeros(len(t))
-    x[0] = x0
-    i=0
-    # Check if q is iterable or const
-    if isinstance(params_known[0], float) == True:
-        dqdt = 0
-        if len(params_known) != 2:
-            params_known.append(dqdt)
-        # Loop through time values, finding corresponding x value
-        for i in range(0, (len(t) - 1)):
-            # Compute normal euler step
-            x_temp = x[i] + dt*f(t[i], x[i], params_unknown, params_known)
-            # Corrector step
-            x[i+1] = x[i] + (dt/2)*(f(t[i], x[i], params_unknown, params_known) + f(t[i+1], x_temp, params_unknown, params_known))
-    else:
-        # Get dqdt and append to known parameters
-        dqdt = np.gradient(params_known[0])
-        if len(params_known) != 2:
-            params_known.append(dqdt)
-        # Loop through time values, finding corresponding x value
-        for i in range(0, (len(t) - 1)):
-            # Compute normal euler step
-            x_temp = x[i] + dt*f(t[i], x[i], params_unknown, params_known, i=i)
-            # Corrector step
-            x[i+1] = x[i] + (dt/2)*(f(t[i], x[i], params_unknown, params_known, i=i) + f(t[i+1], x_temp, params_unknown, params_known, i=i))
-        
-    return x
-
-def improved_euler_concentration(f, t0, t1, dt, x0, pars):
-    # Allocate return arrays
-    t = np.arange(t0, t1+dt, dt)
-    params_unknown, params_known = pars
-    x = np.zeros(len(t))
-    x[0] = x0
-    for i in range(0, (len(t) - 1)):
-        # Compute normal euler step
-        x_temp = x[i] + dt*f(t[i], x[i], params_unknown, params_known,i)
-        # Corrector step
-        x[i+1] = x[i] + (dt/2)*(f(t[i], x[i], params_unknown, params_known,i) + f(t[i+1], x_temp, params_unknown, params_known,i))
-    return x
-
-def plot_benchmark():
-    """Plots numerical and analytical solutions for differential equations
-    """
-    pass
-
-def convergence(f, t0, t1, dt, x0, pars):
-    """Conducts convergence analysis for numerical solution
-
-    Parameters:
-    -----------
-        f : function
-            Function to test convergence on
-        t0 : float
-            Initial time value
-        t1 : float
-            Final time value
-        dt : float
-            Time step used
-        x0 : float 
-            Initial y value
-        pars : Array-like
-            Parameters to be passed to the function
-            Ensure that these are passed in the correct order
-
-    Notes:
-    ------
-        For simplicity, we will use q as a constant in this analysis
-    """
-    # Get figure
-    fig, ax = plt.subplots(1,1)
-    # Create loop to define a series of different step sizes (h) and plot
-    y_converge = []
-    inverse_h = []
-    for i in range(2,100,4):
-        h = 1/i
-        t = np.arange(t0, t1+h, h)
-        y = improved_euler(f, t0, t1, h, x0, pars=pars)
-        y_1975 = np.abs(t-1975.34).argmin() # Find the index of t where t = 1975.34
-        y_converge.append(y[y_1975]) # Find and store the corresponding y value, ie y(t=1975.34)
-        inverse_h.append(1/h) # Store the step used for this solution
-    
-    # Add titles etc
-    ax.plot(inverse_h, y_converge, 'b.', label='Convergence Test')
-    ax.set_xlabel('Time (years)')
-    ax.set_ylabel('Reservoir Pressure (MPa)')
-    ax.set_title('Convergence Test for Improved Euler')
-    ax.set_xlabel('1/h')
-    ax.set_ylabel('y(t=1975)')
-
-    # Add annotation denoting appropriate step size h
-    ax.text(26, 4.5098+0.0001, 'Any step size beyond here \nproduces a similar enough result \nto be considered converged', ha='center', va='bottom', size=10, color='r')
-    ax.arrow(26, 4.5098+0.0001, 0, -0.0001, length_includes_head=True, head_width=2, head_length=0.000025, color='r')
-    
-    # Make sure all the axis labels etc fit on figure
-    plt.tight_layout()
-
-    # Show or save
-    if False:
-        plt.show()
-    else:
-        plt.savefig('dpdt_convergence.png')
-    
-    return 1/inverse_h[6]
+from pressure_functions import *
+from concentration_functions import *
+from functions_for_plotting import *
+from benchmarking import *
+from qloss import *
 
 def read_data():
     """Read in plotting data
@@ -224,7 +30,7 @@ def read_data():
 
     # Return
     return tp, po, t_water, q_water, t_co2, q_co2, tcc, co
-   
+
 def calibration(f, t0, t1, dt, x0, params_unknown, params_known, to, yo, sigma=None):
     """Use built-in curve fitting functions to obtain satisfactory parameter values
 
@@ -255,21 +61,22 @@ def calibration(f, t0, t1, dt, x0, params_unknown, params_known, to, yo, sigma=N
     --------
         params_fitted : array-like
             Parameters fitted to curve/best fit values
+        pcov : array-like
+            Covariance matrix for fitted parameters
     """
     # Interpolate observed variables - this makes the shapes coherent
     t = np.arange(t0, t1+dt, dt)
     yi = np.interp(x=t, xp=to, fp=yo)
     sigma = [sigma]*len(t)
-    #noise = np.random.normal(0,1,len(t))
-    #sigma += noise
+
     # Define lambda function to hide some of our known parameters from curve_fit
     if f.__name__ == 'dPdt':
-        func = lambda z, *params_tofit : improved_euler(f, t0, t1, dt, x0, pars=[params_tofit, params_known])
+        func = lambda z, *params_tofit : improved_euler_pressure(f, t0, t1, dt, x0, pars=[params_tofit, params_known])
     else:
         func = lambda z, *params_tofit : improved_euler_concentration(f, t0, t1, dt, x0, pars=[params_tofit, params_known])
-    popt, pcov = curve_fit(f=func , xdata=t, ydata=yi, p0=params_unknown)
+    popt, pcov = curve_fit(f=func , xdata=t, ydata=yi, p0=params_unknown, sigma=sigma, absolute_sigma=True)
 
-    return popt
+    return popt, pcov
 
 def forecast_model(f, t, tf, x0, params_fitted, params_known):
     """Forecasts a given model into the future, to a given time/date
@@ -304,7 +111,7 @@ def forecast_model(f, t, tf, x0, params_fitted, params_known):
 
     if f.__name__ == 'dPdt':
         # Solve xf using improved euler method
-        xf = improved_euler(f, t0, tf, dt, x0, pars=[params_fitted, params_known])
+        xf = improved_euler_pressure(f, t0, tf, dt, x0, pars=[params_fitted, params_known])
     else:
         # Solve xf using improved euler method
         params_known[0] = [params_known[0]]*len(t_forecast)
@@ -312,59 +119,6 @@ def forecast_model(f, t, tf, x0, params_fitted, params_known):
         
     return t_forecast, xf
 
-def plot_residuals(f, xm, xo, t, to):
-    """Generate a plot showing the residuals between the model and observed data points
-
-    Parameters:
-    -----------
-        f : function
-            DE that is being solved
-        xm : Array-like
-            Array of modelled dependent variable values
-        xo : Array-like
-            Array of observed dependent variable values
-        t : Array-like
-            Array of modelled independent variable values
-        to : Array-like
-            Array of observed independent variable values
-    """
-    # Allocate array
-    residuals = np.zeros(len(to))
-    # Loop through the arrays finding the difference at each observed value
-    for i in range(len(to)):
-        j = np.abs(t-to[i]).argmin()
-        residuals[i] = xm[j]-xo[i]
-    # Plot residuals
-    fig, ax = plt.subplots(1,2, figsize=(12,4))
-    ax[1].plot(to, residuals, 'k.')
-    ax[1].axhline(y=0,ls='--',color='r')
-    ax[1].set_title('Best fit LPM model')
-    ax[1].set_xlabel('Time value (year)')
-    # Plot main model
-    ax[0].set_xlabel('Time (years)')
-    
-
-    # Label differently depending on which quantity being modelled
-    if (f.__name__ == 'dPdt'):
-        ax[1].set_ylabel('Pressure misfit (MPa)')
-        ax[0].plot(t,xm,'b-', label='Pressure - Model')
-        ax[0].plot(to,xo,'k.', label='Pressure - Observed')
-        ax[0].set_ylabel('Pressure (MPa)')
-        ax[0].set_title('Comparison of model to observed \npressure values (post-calibration)')
-        ax[0].legend(loc=1)
-    else:
-        ax[1].set_ylabel('Concentration misfit (wt%)')
-        ax[0].plot(t,xm,'b-', label='Concentration - Model')
-        ax[0].plot(to,xo,'k.', label='Concentration - Observed')
-        ax[0].set_ylabel('Concentration (weight fraction)')
-        ax[0].set_title('Comparison of model to observed \nconcentration values (post-calibration)')
-        ax[0].legend(loc=2)
-    
-    if False:
-        plt.show()
-    else:
-        plt.savefig('{:s}_calibrated.png'.format(f.__name__))
-    
 def solve_pressure(t_water, q_water, t_co2, q_co2, t0, t1, dt, po, tp):
     """Solves the pressure differential equation for the LPM
 
@@ -399,6 +153,10 @@ def solve_pressure(t_water, q_water, t_co2, q_co2, t0, t1, dt, po, tp):
             Best fitting parameter value
         c : float
             Best fitting parameter value
+        p_ambient : float
+            Best guess at ambient pressure
+        dt : float
+            Largest suitable time step based on convergence analysis
     """
     t = np.arange(t0, t1+dt, dt)
     # Interpolate q terms 
@@ -412,7 +170,7 @@ def solve_pressure(t_water, q_water, t_co2, q_co2, t0, t1, dt, po, tp):
     p0 = po[0]
     
     # These parameters will not be fitted, but still need to be passed to dPdt
-    # I don't think this is the correct value, but we will come back to this
+    # I don't think this is the correct value, but we will fit this later
     p_ambient = po[0]
     params_known = [q]
     
@@ -424,7 +182,7 @@ def solve_pressure(t_water, q_water, t_co2, q_co2, t0, t1, dt, po, tp):
     # These parameters will be fitted later
     params_unknown = [a,b,c,p_ambient]
 
-    pm = improved_euler(dPdt, t0, t1, dt, p0, pars=[params_unknown,params_known])
+    pm = improved_euler_pressure(dPdt, t0, t1, dt, p0, pars=[params_unknown,params_known])
 
     # Conduct convergence analysis
     # We pass the average q as a float for simplicity - model misfit doesn't really matter for this step
@@ -440,51 +198,106 @@ def solve_pressure(t_water, q_water, t_co2, q_co2, t0, t1, dt, po, tp):
     q = q_out - q_in
     params_known = [q]
     
-    # Just negate uncertainty for now
-    uncertainty = [1]
-    for sig in uncertainty:
-        # Fit curve
-        params_fitted = calibration(dPdt, t0, t1, converged_dt, x0=p0, params_unknown=params_unknown, params_known=params_known, to=tp, yo=po, sigma=sig)
+    # Pass uncertainty for out covariance matrix
+    uncertainty = 0.6
+    # Fit curve
+    params_fitted, pcov = calibration(dPdt, t0, t1, converged_dt, x0=p0, params_unknown=params_unknown, params_known=params_known, to=tp, yo=po, sigma=uncertainty)
 
-        # Re solve with correct parameters
-        pm = improved_euler(dPdt, t0, t1, converged_dt, p0, pars=[params_fitted,params_known])
+    # Re solve with correct parameters
+    pm = improved_euler_pressure(dPdt, t0, t1, converged_dt, p0, pars=[params_fitted,params_known])
 
-        # Plot calibrated model with residuals
-        plot_residuals(dPdt, pm, po, t, tp)
+    # Plot calibrated model with residuals
+    plot_residuals(dPdt, pm, po, t, tp)
 
-    fig2, ax = plt.subplots(1,1)
+    # Get samples
+    samples = np.random.multivariate_normal(params_fitted, pcov, 100)
+
+    # Plot ensemble
+    ax, p_models = model_ensemble(samples, t, params_known, po, tp)
+
     # Start forecasting
     forecast = [(4.0,'g-'),(2.0,'r-'),(1.0,'b-'),(0.5,'m-')]
+    data = [[],[],[],[]]
+    i=0
     # Lets say 30 years
     tf = t[-1]+30
-    for n, form in forecast:
-        # Calculate q
-        q_inj = n*q_co2[-1]
-        q_ext = q_water[-1]
-        q_forecast = q_ext - q_inj
-        # Forcast
-        t_forecast, pf = forecast_model(dPdt, t, tf, pm[-1], params_fitted, [q_forecast,p_ambient])
-        # Extend p to include forcast
-        # Plot
-        ax.plot(t_forecast, pf, form, label='{:.1f} times current injection rate'.format(n))
+    p_for_loss = []
+    for (sample, p_sample) in zip(samples, p_models):
+        p_temp = p_sample.tolist()
+        p_for_loss.append([])
+        for n, form in forecast:
+            # Calculate q
+            q_inj = n*q_co2[-1]
+            q_ext = q_water[-1]
+            q_forecast = q_ext - q_inj
+            # Forecast
+            t_forecast, pf = forecast_model(dPdt, t, tf, p_sample[-1], sample, [q_forecast,p_ambient])
+            # Extend p to include forecast
+            p_for_loss[int(i/4)].append(p_temp + pf[1:].tolist())
+            # Plot
+            ax.plot(t_forecast, pf, form, lw=0.2, alpha=0.3)
+            # Save pf for histogram
+            data[i%4].append(pf[-1])
+            if i < 4:
+                ax.plot([],[], form, label='Injection = {:.1f} kg/s'.format(q_inj))
+            i += 1
 
+    ax.set_ylabel('Pressure (MPa)')
+    ax.set_xlabel('Time (years)')
+    ax.set_title('Forecast of pressure under different injection rates')
+    ax.axvline(t[-1], color='k', ls='--', lw=0.5, alpha=0.4)
+    ax.legend(loc=3)
+
+    if False:
+        plt.show()
+    else:
+        plt.savefig('dpdt_forecast_uncertainty')
+        plt.close()
+
+    # Also generate a model that does not account for uncertainty - illustrative purposes
+    f, ax = plt.subplots(1,1)
+    for n, form in forecast:
+            # Calculate q
+            q_inj = n*q_co2[-1]
+            q_ext = q_water[-1]
+            q_forecast = q_ext - q_inj
+            # Forecast
+            t_forecast, pf = forecast_model(dPdt, t, tf, pm[-1], params_fitted, [q_forecast])
+            # Extend p to include forecast
+            # Plot
+            ax.plot(t_forecast, pf, form, label='Injection = {:.1f}kg/s'.format(q_inj))
     ax.plot(t,pm,'b-')
     ax.set_ylabel('Pressure (MPa)')
     ax.set_xlabel('Time (years)')
     ax.set_title('Forecast of pressure under different injection rates')
     ax.plot(tp,po,'k.', label='Pressure - Observed')
     ax.axvline(t[-1], color='k', ls='--', lw=0.5, alpha=0.4)
-    ax.legend(loc=2)
-
+    ax.legend(loc=3)
     if False:
         plt.show()
     else:
-        plt.savefig('dpdt_forecast')
+        plt.savefig('dpdt_forecast.png')
+        plt.close()
+
+
+
+    # Clear the file 'confint' if it exists, in preparation for 95% confints
+    fp = open('confint.txt', 'w+')
+    fp.write('\n')
+
+    # Get histograms for data
+    for i in range(len(data)):
+        n,_ = forecast[i]
+        title = '{:d} Pressure at {:.1f} times current injection'.format(int(tf), n)
+        get_hist(data[i], title)
+
 
     a,b,c,p_ambient = params_fitted
 
+    p_models = [x for x in zip(*p_for_loss)]
+
     # Output fitted curve and best parameters
-    return pm, t, a, b, c, p_ambient, converged_dt
+    return pm, t, a, b, c, p_ambient, converged_dt, p_models
 
 def solve_concentration(pm,t_pm,t_cc, co, t_co2, q_co2, t0, t1, dt,pars):
     """Solves the concentration differential equation for the LPM
@@ -506,13 +319,12 @@ def solve_concentration(pm,t_pm,t_cc, co, t_co2, q_co2, t0, t1, dt,pars):
         dt : float
             Time step used
         co : Array-like
-            Array containing values of carbon concentration
+            Array containing observed values of carbon concentration
         t_cc : Array-like
             Array containing corresponding time values
         pars : array-like
             Parameters to be passed from pressure model in the form (a,b,c)
             
-
 
     Returns:
     --------
@@ -521,9 +333,11 @@ def solve_concentration(pm,t_pm,t_cc, co, t_co2, q_co2, t0, t1, dt,pars):
         t : Array-like
             Array containing corresponding time values
         d : float
+            Best guess at parameter d
+        M0 : float
+            Best guess at reservoir mass
     """
-    # Turn fraction into % for clarity
-    co = co
+
     t = np.arange(t0, t1+dt, dt)
     # Interpolate terms 
     q_co2_interp = np.interp(x=t, xp=t_co2, fp=q_co2, left=0.0)
@@ -544,8 +358,11 @@ def solve_concentration(pm,t_pm,t_cc, co, t_co2, q_co2, t0, t1, dt,pars):
     # Solve euler
     cm = improved_euler_concentration(dCdt, t0, t1, dt, C0, pars=[params_unknown,params_known])
 
+    # Input uncertainty for covariance matrix
+    uncertainty = 0.015
+    
     # Calibrate
-    params_fitted = calibration(dCdt, t0, t1, dt, C0, params_unknown, params_known, t_cc, co)
+    params_fitted, pcov = calibration(dCdt, t0, t1, dt, C0, params_unknown, params_known, t_cc, co, sigma=uncertainty)
 
     # Re-solve with fitted parameters
     cm = improved_euler_concentration(dCdt, t0, t1, dt, C0, pars=[params_fitted,params_known])
@@ -553,78 +370,132 @@ def solve_concentration(pm,t_pm,t_cc, co, t_co2, q_co2, t0, t1, dt,pars):
     # plot
     plot_residuals(dCdt, cm, co, t, t_cc)
 
-    fig4, ax = plt.subplots(1,1)
+    # Get samples
+    samples = np.random.multivariate_normal(params_fitted, pcov, 100)
+
+    # Plot ensemble
+    ax, c_models = model_ensemble_conc(samples, t, params_known, co, t_cc)
+
     # Start forecasting
     forecast = [(4.0,'g-'),(2.0,'r-'),(1.0,'b-'),(0.5,'m-')]
     # Lets say 30 years
     tf = t[-1]+30
-    for n, form in forecast:
-        # Calculate q
-        q_forecast = n*q_co2_interp[-1]
-        # Forcast
-        t_forecast, pf = forecast_model(dCdt, t, tf, cm[-1], params_fitted, [q_forecast,p_ambient,C_ambient,a,b,c,cm])
-        # Extend p to include forcast
-        # Plot
-        ax.plot(t_forecast, pf, form, label='{:.1f} times current injection rate'.format(n))
 
-    ax.plot(t,cm,'b-')
+    # Allocate data lists for histogram
+    data = [[],[],[],[]]
+    i=0
+
+    # Pre-allocate for solving qloss later
+    c_for_loss = []
+    
+    for (sample, c_sample) in zip(samples, c_models):
+        c_temp = c_sample.tolist()
+        c_for_loss.append([])
+        for n, form in forecast:
+            # Calculate q
+            q_forecast = n*q_co2_interp[-1]
+            # Forcast
+            t_forecast, cf = forecast_model(dCdt, t, tf, c_sample[-1], sample, [q_forecast,p_ambient,C_ambient,a,b,c,cm])
+            c_for_loss[int(i/4)].append(c_temp + cf[1:].tolist())
+            # Plot
+            ax.plot(t_forecast, cf, form, lw=0.2, alpha=0.3)
+            # Save cf for histogram
+            data[i%4].append(cf[-1])
+            if i < 4:
+                ax.plot([],[], form, label='Injection: {:.1f} kg/s'.format(q_forecast))
+            i += 1
+
     ax.set_ylabel('Concentration (weight fraction)')
+    ax.set_xlabel('Time (years)')
+    ax.set_title('Forecast of concentration under different injection rates')
+    ax.axhline(y=0.1, color='r', ls='-.', lw=1, alpha=0.4, label='10% limit')
+    ax.legend(loc=2)
+    
+    if False:
+        plt.show()
+    else:
+        plt.savefig('dcdt_forecast_uncertainty.png')
+        plt.close()
+
+    # Also generate a model that does not account for uncertainty - illustrative purposes
+    f, ax = plt.subplots(1,1)
+    for n, form in forecast:
+            # Calculate q
+            q_forecast = n*q_co2_interp[-1]
+            # Forcast
+            t_forecast, cf = forecast_model(dCdt, t, tf, cm[-1], params_fitted, [q_forecast,p_ambient,C_ambient,a,b,c,cm])
+            # Plot
+            ax.plot(t_forecast, cf, form, label='Injection = {:.1f}kg/s'.format(q_forecast))
+    ax.plot(t,cm,'b-')
+    ax.set_ylabel('C02 Concentration (wt fraction)')
     ax.set_xlabel('Time (years)')
     ax.set_title('Forecast of concentration under different injection rates')
     ax.plot(t_cc,co,'k.', label='Concentration - Observed')
     ax.axvline(t[-1], color='k', ls='--', lw=0.5, alpha=0.4)
-    ax.axhline(y=0.1, color='r', ls='-.', lw=1, alpha=0.4, label='10% limit')
     ax.legend(loc=2)
-
+    ax.axhline(0.1, color='r', ls='-.', lw=0.5, alpha=0.4, label='10% limit')
     if False:
         plt.show()
     else:
         plt.savefig('dcdt_forecast.png')
+        plt.close()
 
-    return cm,t,d
+    # Get histograms for data
+    for i in range(len(data)):
+        n,_ = forecast[i]
+        title = '{:d} Concentration at {:.1f} times current injection'.format(int(tf), n)
+        get_hist(data[i], title)
 
-def carbon_prime(C,p,p0):
-    """Outputs the C' value for the carbon diffential equation
+    c_models = [x for x in zip(*c_for_loss)]
 
-    Parameters:
-    -----------
-        C : float
-            current C value
-        p : float
-            current pressure value
-        p0 : float
-            Initial pressure value
-        C0 : float
-            Initial C value
-
-    Returns:
-    --------
-        C : float
-            Value of C' for the recharge rate
-    """
-    
-    if p > p0:
-        return C
-    else:
-        return .03
-
-# Benchmarking
-# Time calibration - convergence
-# Parameter calibration - gradient descent
-# Unit tests
-# ------------------
-# Scenario
-# Posterior
+    return cm,t,d,M0, c_models
 
 def main():
+
+    # Read Data
     tp, po, t_water, q_water, t_co2, q_co2, t_cc, co = read_data()
-    #f, ax = plt.subplots(1,1)
-    #ax.plot(tp, po, 'r.')
+    # Arbitrarily define timestep to be used before convergence testing
     t0 = tp[0]
     t1 = tp[-1]
     dt = 0.5
-    pm, tp, a, b, c, p_ambient, dt = solve_pressure(t_water, q_water, t_co2, q_co2, t0, t1, dt, po, tp)
-    cm,t,d = solve_concentration(pm,tp,t_cc, co, t_co2, q_co2, t0, t1, dt,[a,b,c,p_ambient])
+    # Solve pressure
+    pm, tp, a, b, c, p_ambient, dt, p_models = solve_pressure(t_water, q_water, t_co2, q_co2, t0, t1, dt, po, tp)
+    # Solve concentration
+    cm,t,d,m0, c_models = solve_concentration(pm, tp, t_cc, co, t_co2, q_co2, t0, t1, dt, [a,b,c,p_ambient])
+
+    # Benchmark
+    x_analytical_pressure,x_eulers_pressure=benchmark_pressure(1967.34,2018.50,0.5,6.17e+00,[[0.0019,0.1534,0.0265,6.17e+00],[-63.]])
+    benchmark_concentration(1967.34,2018.50,0.5,2.98e-02,[[0.25246,9167.33],[63,6.17e+00,0.03,0.0019,0.1534,0.0265,x_eulers_pressure]])
+
+    # Determine CO2 loss to waterways
+    # For each scenario
+    f, ax = plt.subplots(1,2, figsize=(12,6))
+    forecast = [(4.0,'g-'),(2.0,'r-'),(1.0,'b-'),(0.5,'m-')]
+    i=0
+    for n, form in forecast:
+        # For each sample
+        for (p, c) in zip(p_models[i], c_models[i]):
+            qloss, t = solve_q_loss(p,c,t0,tp[-1],dt,[a,b,p_ambient])
+            ax[0].plot(t,qloss,form, lw=0.3, alpha=0.3)
+            ax[1].plot(t,qloss,form, lw=0.3, alpha=0.3)
+        i += 1
+        ax[0].plot([],[], form, label='{:.1f} times current injection'.format(n))
+    ax[0].set_xlabel('Time (Years)')
+    ax[1].set_xlabel('Time (Years)')
+    ax[0].set_ylabel('CO2 loss (kg)')
+    ax[0].set_title('CO2 Loss to surrounding waterways at \nvarious injection rates')
+    ax[1].set_title('Zoomed')
+    ax[1].set_ylim(bottom=0, top=0.25)
+    ax[0].legend(loc=2)
+    if False:
+            plt.show()
+    else:
+        plt.savefig('CO2 Loss.png')
+        plt.close()
+
+        
+
+    print('Done')
     
 
 if __name__ == "__main__":

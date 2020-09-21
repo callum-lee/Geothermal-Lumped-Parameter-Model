@@ -1,0 +1,9 @@
+
+48 Pressure at 4.0 times current injection: [4.819, 6.099]
+2048 Pressure at 2.0 times current injection: [3.610, 4.863]
+2048 Pressure at 1.0 times current injection: [3.005, 4.265]
+2048 Pressure at 0.5 times current injection: [2.703, 3.973]
+2048 Concentration at 4.0 times current injection: [0.089, 0.104]
+2048 Concentration at 2.0 times current injection: [0.060, 0.068]
+2048 Concentration at 1.0 times current injection: [0.045, 0.050]
+2048 Concentration at 0.5 times current injection: [0.038, 0.040]
